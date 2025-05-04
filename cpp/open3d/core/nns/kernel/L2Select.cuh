@@ -65,14 +65,23 @@ __global__ void l2SelectMin1(T* productDistances,
         threadMin[i].v = -1;
     }
 
+    // blockIdx.x: which chunk of rows we are responsible for updating
     int rowStart = blockIdx.x * kRowsPerBlock;
-    bool endRow = (blockIdx.x == gridDim.x - 1) && (num_points % kRowsPerBlock != 0);
+
+    // FIXME: if we have exact multiples, don't need this
+    bool endRow = (blockIdx.x == gridDim.x - 1);
+
+    if (endRow) {
+        if (num_points % kRowsPerBlock == 0) {
+            endRow = false;
+        }
+    }
 
     if (endRow) {
         for (int row = rowStart; row < num_points; ++row) {
             for (int col = threadIdx.x; col < dim; col += blockDim.x) {
                 distance[0] = centroidDistances[col] +
-                              productDistances[row * dim + col];
+                              productDistances[row + dim + col];
 
                 if (distance[0] < threadMin[0].k) {
                     threadMin[0].k = distance[0];
