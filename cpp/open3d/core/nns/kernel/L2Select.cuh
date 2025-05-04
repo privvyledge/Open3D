@@ -80,12 +80,14 @@ __global__ void l2SelectMin1(T* productDistances,
                 }
             }
 
-            threadMin[0] = blockReduceAll<Pair<T, int>, Min<Pair<T, int>>, false, false>(
-    threadMin[0], Min<Pair<T, int>>(), blockMin);
+            // Reduce within the block
+            threadMin[0] = blockReduceAll<Pair<T, int>, Min<Pair<T, int>>,
+                                          false, false>(
+                    threadMin[0], Min<Pair<T, int>>(), blockMin);
 
             if (threadIdx.x == 0) {
-                outDistances[row] = threadMin[0].k;
-                outIndices[row] = threadMin[0].v;
+                outDistances[row + 0] = threadMin[0].k;
+                outIndices[row + 0] = threadMin[0].v;
             }
 
             // so we can use the shared memory again
