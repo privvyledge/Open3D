@@ -53,9 +53,10 @@ __global__ void l2SelectMin1(T* productDistances,
                              int num_points,
                              int dim) {
     // Each block handles kRowsPerBlock rows of the distances (results)
-    Pair<T, int> threadMin[kRowsPerBlock];
-    __shared__ Pair<T, int> blockMin[kRowsPerBlock * (kBlockSize / kWarpSize)];
+    extern __shared__ char shared_memory[];
+    Pair<T, int>* blockMin = reinterpret_cast<Pair<T, int>*>(shared_memory);
 
+    Pair<T, int> threadMin[kRowsPerBlock];
     T distance[kRowsPerBlock];
 
 #pragma unroll
@@ -64,23 +65,14 @@ __global__ void l2SelectMin1(T* productDistances,
         threadMin[i].v = -1;
     }
 
-    // blockIdx.x: which chunk of rows we are responsible for updating
     int rowStart = blockIdx.x * kRowsPerBlock;
-
-    // FIXME: if we have exact multiples, don't need this
-    bool endRow = (blockIdx.x == gridDim.x - 1);
-
-    if (endRow) {
-        if (num_points % kRowsPerBlock == 0) {
-            endRow = false;
-        }
-    }
+    bool endRow = (blockIdx.x == gridDim.x - 1) && (num_points % kRowsPerBlock != 0);
 
     if (endRow) {
         for (int row = rowStart; row < num_points; ++row) {
             for (int col = threadIdx.x; col < dim; col += blockDim.x) {
                 distance[0] = centroidDistances[col] +
-                              productDistances[row + dim + col];
+                              productDistances[row * dim + col];
 
                 if (distance[0] < threadMin[0].k) {
                     threadMin[0].k = distance[0];
@@ -88,14 +80,12 @@ __global__ void l2SelectMin1(T* productDistances,
                 }
             }
 
-            // Reduce within the block
-            threadMin[0] = blockReduceAll<Pair<T, int>, Min<Pair<T, int>>,
-                                          false, false>(
-                    threadMin[0], Min<Pair<T, int>>(), blockMin);
+            threadMin[0] = blockReduceAll<Pair<T, int>, Min<Pair<T, int>>, false, false>(
+    threadMin[0], Min<Pair<T, int>>(), blockMin);
 
             if (threadIdx.x == 0) {
-                outDistances[row + 0] = threadMin[0].k;
-                outIndices[row + 0] = threadMin[0].v;
+                outDistances[row] = threadMin[0].k;
+                outIndices[row] = threadMin[0].v;
             }
 
             // so we can use the shared memory again
